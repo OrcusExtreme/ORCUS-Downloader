@@ -363,6 +363,11 @@ class DownloaderWorker(threading.Thread):
 
         start_sec = parse_time_to_seconds(self.clip_start)
         end_sec = parse_time_to_seconds(self.clip_end)
+        if start_sec is not None and end_sec is not None and start_sec >= end_sec:
+            if 'on_finish' in self.callbacks:
+                self.callbacks['on_finish'](False, f"Invalid clip range: Start time ({self.clip_start}) must be earlier than End time ({self.clip_end}).", None)
+            return
+
         if start_sec is not None or end_sec is not None:
             s_val = start_sec if start_sec is not None else 0
             ydl_opts['download_ranges'] = download_range_func(None, [(s_val, end_sec)])

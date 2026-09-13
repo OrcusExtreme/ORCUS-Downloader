@@ -64,7 +64,7 @@ class OrcusDownloaderApp(ctk.CTk):
         self.geometry("860x800")
         self.minsize(800, 740)
 
-        # Base path for resources (supports PyInstaller bundle)
+        # Base path for resources (supports PyInstaller bundle and src/ submodule)
         if getattr(sys, 'frozen', False):
             self.base_dir = sys._MEIPASS
         else:
@@ -72,6 +72,17 @@ class OrcusDownloaderApp(ctk.CTk):
 
         self.icon_ico = os.path.join(self.base_dir, "app_icon.ico")
         self.icon_png = os.path.join(self.base_dir, "app_icon.png")
+
+        # Fallback to parent directory if running from src/
+        if not os.path.exists(self.icon_ico):
+            parent_ico = os.path.join(os.path.dirname(self.base_dir), "app_icon.ico")
+            if os.path.exists(parent_ico):
+                self.icon_ico = parent_ico
+
+        if not os.path.exists(self.icon_png):
+            parent_png = os.path.join(os.path.dirname(self.base_dir), "app_icon.png")
+            if os.path.exists(parent_png):
+                self.icon_png = parent_png
 
         # Set window icon
         if os.path.exists(self.icon_ico):
@@ -1234,12 +1245,29 @@ class OrcusDownloaderApp(ctk.CTk):
         self._hide_to_tray()
 
     def _quit_app(self):
+        # Cancel any active single worker
+        if self.single_worker and self.single_worker.is_alive():
+            try:
+                self.single_worker.cancel()
+            except Exception:
+                pass
+        # Cancel any active queue workers
+        for it in self.queue_items:
+            if it.worker and it.worker.is_alive():
+                try:
+                    it.worker.cancel()
+                except Exception:
+                    pass
         if self.tray_icon:
             try:
                 self.tray_icon.stop()
             except Exception:
                 pass
-        self.quit()
+        try:
+            self.quit()
+            self.destroy()
+        except Exception:
+            pass
         sys.exit(0)
 
 
