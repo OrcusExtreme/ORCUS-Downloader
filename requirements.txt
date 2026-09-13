@@ -1,0 +1,17 @@
+# Core UI Framework
+customtkinter>=5.2.0
+
+# Media Download Engine
+yt-dlp>=2025.01.0
+
+# Image & Icon Processing
+Pillow>=10.0.0
+
+# System Tray Integration
+pystray>=0.19.5
+
+# Audio Metadata & Cover Art Tagging
+mutagen>=1.47.0
+
+# PyInstaller for Standalone Executable Packaging (Optional / Dev)
+pyinstaller>=6.0.0

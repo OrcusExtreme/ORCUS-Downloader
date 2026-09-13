@@ -1,0 +1,50 @@
+# ==============================================================================
+# ORCUS Downloader - Git Ignore Configuration
+# ==============================================================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# PyInstaller temporary build artifacts
+build/
+dist/
+*.spec
+
+# Downloaded media files & temporary chunks
+*.mp4
+*.mp3
+*.m4a
+*.ts
+*.webm
+*.mkv
+*.part
+*.ytdl
+test_output/
+user_verified_output/
+
+# Local cache & status files
+download_status.json
+*.log
+.orcus_downloader_history.json
+
+# Developer environment & IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Note: If you do NOT want to track the prebuilt executable in git, uncomment the line below:
+# ORCUS Downloader.exe
