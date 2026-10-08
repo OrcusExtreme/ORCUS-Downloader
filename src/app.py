@@ -9,6 +9,7 @@ from tkinter import filedialog, messagebox
 
 import downloader_core
 import history_manager
+import ffmpeg_manager
 
 # System Tray support via pystray
 try:
@@ -115,6 +116,25 @@ class OrcusDownloaderApp(ctk.CTk):
             self.protocol("WM_DELETE_WINDOW", self._on_close_window)
         else:
             self.protocol("WM_DELETE_WINDOW", self._quit_app)
+
+        # Pre-warm or auto-provision FFmpeg in background
+        threading.Thread(target=self._init_ffmpeg_background, daemon=True).start()
+
+    def _init_ffmpeg_background(self):
+        """Checks if FFmpeg is available; if not, automatically downloads it in the background."""
+        if ffmpeg_manager.is_ffmpeg_available():
+            return
+
+        self.after(0, lambda: self.status_bar.configure(text="Setting up media engine (FFmpeg) in background..."))
+
+        def _on_progress(pct, msg):
+            self.after(0, lambda: self.status_bar.configure(text=f"Setup: {msg}"))
+
+        try:
+            ffmpeg_manager.ensure_ffmpeg(progress_callback=_on_progress)
+            self.after(0, lambda: self.status_bar.configure(text="Ready. Enter a URL to begin."))
+        except Exception:
+            self.after(0, lambda: self.status_bar.configure(text="Ready. Enter a URL to begin."))
 
     # -------------------------------------------------------------
     # UI Header & Tabs

@@ -30,6 +30,15 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      - name: Download FFmpeg Binaries for Offline Bundling
+        run: |
+          New-Item -ItemType Directory -Force -Path "bin"
+          Invoke-WebRequest -Uri "https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v6.1/ffmpeg-6.1-win-64.zip" -OutFile "bin\ffmpeg.zip"
+          Expand-Archive -Path "bin\ffmpeg.zip" -DestinationPath "bin" -Force
+          Invoke-WebRequest -Uri "https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v6.1/ffprobe-6.1-win-64.zip" -OutFile "bin\ffprobe.zip"
+          Expand-Archive -Path "bin\ffprobe.zip" -DestinationPath "bin" -Force
+          Remove-Item "bin\*.zip" -Force
+
       - name: Build Executable with PyInstaller
         run: |
           python -m PyInstaller --noconsole --onefile --clean `
@@ -37,6 +46,8 @@ jobs:
             --add-data "app_icon.png;." `
             --add-data "app_icon.ico;." `
             --add-data "src;src" `
+            --add-binary "bin/ffmpeg.exe;." `
+            --add-binary "bin/ffprobe.exe;." `
             --collect-all customtkinter `
             --collect-all pystray `
             --paths "src" `

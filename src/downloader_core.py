@@ -14,6 +14,7 @@ import yt_dlp
 from yt_dlp.extractor.chzzk import CHZZKVideoIE
 from yt_dlp.utils.traversal import traverse_obj
 from yt_dlp.utils import float_or_none, int_or_none, url_or_none, download_range_func
+import ffmpeg_manager
 
 class DownloadCancelled(Exception):
     pass
@@ -173,9 +174,9 @@ def fetch_preview_info(url: str) -> dict:
         'no_warnings': True,
         'noplaylist': True,
     }
-    ffmpeg_bin = shutil.which('ffmpeg')
-    if ffmpeg_bin:
-        ydl_opts['ffmpeg_location'] = os.path.dirname(ffmpeg_bin)
+    ffmpeg_dir = ffmpeg_manager.get_ffmpeg_dir()
+    if ffmpeg_dir:
+        ydl_opts['ffmpeg_location'] = ffmpeg_dir
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -357,9 +358,24 @@ class DownloaderWorker(threading.Thread):
         if postprocessors:
             ydl_opts['postprocessors'] = postprocessors
 
-        ffmpeg_bin = shutil.which('ffmpeg')
-        if ffmpeg_bin:
-            ydl_opts['ffmpeg_location'] = os.path.dirname(ffmpeg_bin)
+        ffmpeg_dir = ffmpeg_manager.get_ffmpeg_dir()
+        if not ffmpeg_dir:
+            if 'on_status' in self.callbacks:
+                self.callbacks['on_status']("Setting up media engine (FFmpeg)...")
+
+            def _ff_progress(pct, msg):
+                if 'on_status' in self.callbacks:
+                    self.callbacks['on_status'](f"FFmpeg: {msg}")
+
+            try:
+                ffmpeg_dir = ffmpeg_manager.ensure_ffmpeg(progress_callback=_ff_progress)
+            except Exception as e:
+                if 'on_finish' in self.callbacks:
+                    self.callbacks['on_finish'](False, f"FFmpeg error: {str(e)}", None)
+                return
+
+        if ffmpeg_dir:
+            ydl_opts['ffmpeg_location'] = ffmpeg_dir
 
         start_sec = parse_time_to_seconds(self.clip_start)
         end_sec = parse_time_to_seconds(self.clip_end)

@@ -17,6 +17,9 @@ ENV/
 build/
 dist/
 *.spec
+bin/
+ffmpeg/
+*.tmp.zip
 
 # Downloaded media files & temporary chunks
 *.mp4

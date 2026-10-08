@@ -82,7 +82,8 @@ yt_dlp/
 
 ### Option 1: Run Prebuilt Executable
 Simply download or double-click **`ORCUS Downloader.exe`**.  
-No Python or external library installation is required!
+- **100% Zero-Configuration**: Works on clean Windows PCs with absolutely nothing installed!
+- **Auto-Provisioned FFmpeg**: Media processing engine (FFmpeg & FFprobe) is automatically bundled or self-provisioned without any manual setup, winget commands, or PATH configuration.
 
 ### Option 2: Run from Source
 
@@ -97,16 +98,11 @@ No Python or external library installation is required!
    pip install -r requirements.txt
    ```
 
-3. **Ensure FFmpeg is installed**:
-   FFmpeg is required for MP3 audio extraction, video merging, and clipping.
-   ```powershell
-   winget install Gyan.FFmpeg
-   ```
-
-4. **Launch the application**:
+3. **Launch the application**:
    ```bash
    python main.py
    ```
+   *(FFmpeg is automatically detected or downloaded on first run if missing.)*
 
 ---
 
@@ -114,15 +110,15 @@ No Python or external library installation is required!
 
 You can compile the application into a single standalone `.exe` using PyInstaller:
 
-```bash
+```powershell
 python -m PyInstaller --noconsole --onefile --clean `
   --icon=app_icon.ico `
   --add-data "app_icon.png;." `
   --add-data "app_icon.ico;." `
+  --add-data "src;src" `
   --collect-all customtkinter `
   --collect-all pystray `
-  --hidden-import downloader_core `
-  --hidden-import history_manager `
+  --paths "src" `
   --name "ORCUS Downloader" `
   main.py
 ```
