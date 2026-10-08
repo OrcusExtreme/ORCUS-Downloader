@@ -10,14 +10,16 @@
 </p>
 
 <p align="center">
-  <a href="../../releases/latest">
+  <a href="https://github.com/OrcusExtreme/ORCUS-Downloader/releases/latest/download/ORCUS.Downloader.exe">
     <img src="https://img.shields.io/badge/Download-ORCUS__Downloader.exe-success?style=for-the-badge&logo=windows&color=0078D6" alt="Download Executable"/>
   </a>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Platform-Windows-0078D6?style=flat-square&logo=windows" alt="Platform"/>
-  <img src="https://img.shields.io/badge/Release-v1.0.0-orange?style=flat-square&logo=github" alt="Release"/>
+  <a href="https://github.com/OrcusExtreme/ORCUS-Downloader/releases/latest">
+    <img src="https://img.shields.io/badge/Release-v1.0.1-orange?style=flat-square&logo=github" alt="Release"/>
+  </a>
   <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python" alt="Python"/>
   <img src="https://img.shields.io/badge/GUI-CustomTkinter-blueviolet?style=flat-square" alt="GUI"/>
   <img src="https://img.shields.io/badge/Engine-yt--dlp-FF0000?style=flat-square" alt="yt-dlp"/>
@@ -81,7 +83,7 @@ yt_dlp/
 ## 🚀 Quick Start
 
 ### Option 1: Run Prebuilt Executable
-Simply download or double-click **`ORCUS Downloader.exe`**.  
+Simply download or double-click **[ORCUS Downloader.exe (최신 v1.0.1 다운로드)](https://github.com/OrcusExtreme/ORCUS-Downloader/releases/latest/download/ORCUS.Downloader.exe)**.  
 - **100% Zero-Configuration**: Works on clean Windows PCs with absolutely nothing installed!
 - **Auto-Provisioned FFmpeg**: Media processing engine (FFmpeg & FFprobe) is automatically bundled or self-provisioned without any manual setup, winget commands, or PATH configuration.
 
@@ -89,8 +91,8 @@ Simply download or double-click **`ORCUS Downloader.exe`**.
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/YourUsername/orcus-downloader.git
-   cd orcus-downloader
+   git clone https://github.com/OrcusExtreme/ORCUS-Downloader.git
+   cd ORCUS-Downloader
    ```
 
 2. **Install dependencies**:
