@@ -61,48 +61,45 @@ def _check_dir_has_ffmpeg(directory: str) -> bool:
 def get_ffmpeg_dir() -> str | None:
     """
     Discovers the directory containing ffmpeg.exe in priority order:
-    1. PyInstaller bundled temp directory (_MEIPASS)
-    2. Same directory as current executable / main script
-    3. 'bin' folder next to executable
-    4. Persistent AppData directory (%LOCALAPPDATA%/ORCUS Downloader/bin)
-    5. User home fallback directory (~/.orcus_downloader/bin)
-    6. System PATH (shutil.which)
+    1. PyInstaller bundled resources (sys._MEIPASS or app directory / bin)
+    2. Local persistent AppData cache (%LOCALAPPDATA%/ORCUS Downloader/bin)
+    3. User home fallback directory (~/.orcus_downloader/bin)
+    4. System PATH (shutil.which)
 
-    If found, ensures the directory is prepended to os.environ['PATH'] and returned.
+    Uses path_utils.find_ffmpeg_bin_dir() for unified path resolution.
     """
-    candidates = []
+    try:
+        import path_utils
+        found = path_utils.find_ffmpeg_bin_dir()
+        if found:
+            return found
+    except ImportError:
+        pass
 
-    # 1. PyInstaller _MEIPASS
+    # Direct fallback search if path_utils is not imported
+    candidates = []
     if getattr(sys, "frozen", False):
         meipass = getattr(sys, "_MEIPASS", None)
         if meipass:
             candidates.append(meipass)
             candidates.append(os.path.join(meipass, "bin"))
-
-    # 2. Executable / script base directory & sub-bin
-    if getattr(sys, "frozen", False):
         exe_dir = os.path.dirname(os.path.abspath(sys.executable))
     else:
         exe_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    candidates.append(exe_dir)
-    candidates.append(os.path.join(exe_dir, "bin"))
-    candidates.append(os.path.join(exe_dir, "ffmpeg", "bin"))
 
-    # 3. Persistent Local AppData
-    appdata_bin = get_local_storage_dir()
-    candidates.append(appdata_bin)
+    candidates.extend([
+        os.path.join(exe_dir, "bin"),
+        exe_dir,
+        os.path.join(exe_dir, "ffmpeg", "bin"),
+        get_local_storage_dir(),
+        os.path.join(os.path.expanduser("~"), ".orcus_downloader", "bin"),
+    ])
 
-    # 4. User home fallback
-    home_bin = os.path.join(os.path.expanduser("~"), ".orcus_downloader", "bin")
-    candidates.append(home_bin)
-
-    # Check candidates
     for c in candidates:
         if _check_dir_has_ffmpeg(c):
             _ensure_in_path(c)
             return os.path.abspath(c)
 
-    # 5. System PATH
     which_ffmpeg = shutil.which("ffmpeg")
     if which_ffmpeg:
         found_dir = os.path.dirname(os.path.abspath(which_ffmpeg))

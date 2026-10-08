@@ -370,6 +370,15 @@ class DownloaderWorker(threading.Thread):
             'fragment_retries': 10,
             'quiet': True,
             'no_warnings': True,
+            # Speed & Performance Optimizations
+            'concurrent_fragment_downloads': 8,   # Parallel chunk downloads for DASH & HLS
+            'buffersize': 1048576,                # 1MB I/O buffer to reduce disk latency
+            'postprocessor_args': {
+                'default': ['-threads', '0'],
+                'FFmpegExtractAudio': ['-threads', '0'],
+                'FFmpegVideoRemuxer': ['-threads', '0'],
+                'FFmpegMerger': ['-threads', '0'],
+            },
         }
         if platform == 'YouTube':
             ydl_opts['extractor_args'] = {
@@ -439,7 +448,7 @@ class DownloaderWorker(threading.Thread):
                     except Exception:
                         pass
 
-                ydl.download([self.url])
+                ydl.process_ie_result(info, download=True)
                 final_file = ydl.prepare_filename(info)
                 
                 if self.download_type == 'audio':

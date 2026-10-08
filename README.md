@@ -10,15 +10,18 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/OrcusExtreme/ORCUS-Downloader/releases/latest/download/ORCUS_Downloader_v1.0.4_Setup.exe">
+    <img src="https://img.shields.io/badge/Download-Installer_Setup_(v1.0.4)-success?style=for-the-badge&logo=windows&color=0078D6" alt="Download Windows Installer"/>
+  </a>
   <a href="https://github.com/OrcusExtreme/ORCUS-Downloader/releases/latest/download/ORCUS.Downloader.exe">
-    <img src="https://img.shields.io/badge/Download-ORCUS__Downloader.exe-success?style=for-the-badge&logo=windows&color=0078D6" alt="Download Executable"/>
+    <img src="https://img.shields.io/badge/Download-Portable_Exe-lightgrey?style=for-the-badge&logo=windows" alt="Download Portable Exe"/>
   </a>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Platform-Windows-0078D6?style=flat-square&logo=windows" alt="Platform"/>
   <a href="https://github.com/OrcusExtreme/ORCUS-Downloader/releases/latest">
-    <img src="https://img.shields.io/badge/Release-v1.0.2-orange?style=flat-square&logo=github" alt="Release"/>
+    <img src="https://img.shields.io/badge/Release-v1.0.4-orange?style=flat-square&logo=github" alt="Release"/>
   </a>
   <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python" alt="Python"/>
   <img src="https://img.shields.io/badge/GUI-CustomTkinter-blueviolet?style=flat-square" alt="GUI"/>
@@ -81,14 +84,18 @@ yt_dlp/
 ---
 
 ## 🚀 Quick Start
+ 
+### Option 1: Windows Installer (Recommended)
+Download and run the **[ORCUS_Downloader_v1.0.4_Setup.exe](https://github.com/OrcusExtreme/ORCUS-Downloader/releases/latest/download/ORCUS_Downloader_v1.0.4_Setup.exe)** installer:
+- **100% Self-Contained**: Completely standalone for clean Windows PCs. No Python, FFmpeg, or dependencies required!
+- **Auto-Provisioned FFmpeg Engine**: Bundles complete `ffmpeg.exe` and `ffprobe.exe` binaries with zero PATH setup needed.
+- **System Integration**: Installs to `C:\Program Files\ORCUS Downloader` with optional Desktop icon, Start Menu shortcuts, and clean Windows Control Panel Uninstaller.
+- **Ultra-Fast Speed Pipeline (v1.0.4)**: Single-pass metadata execution (`process_ie_result`), 8-thread concurrent fragment downloads, and CPU multi-core FFmpeg postprocessing (`-threads 0`).
 
-### Option 1: Run Prebuilt Executable
-Simply download or double-click **[ORCUS Downloader.exe (최신 v1.0.2 다운로드)](https://github.com/OrcusExtreme/ORCUS-Downloader/releases/latest/download/ORCUS.Downloader.exe)**.  
-- **100% Zero-Configuration**: Works on clean Windows PCs with absolutely nothing installed!
-- **Auto-Provisioned FFmpeg**: Media processing engine (FFmpeg & FFprobe) is automatically bundled or self-provisioned without any manual setup, winget commands, or PATH configuration.
-- **YouTube Sign-in & Anti-Bot Bypass**: Native embedded multi-client resolution bypasses "Please sign in" errors automatically.
+### Option 2: Portable Executable
+Simply download **[ORCUS.Downloader.exe (Portable)](https://github.com/OrcusExtreme/ORCUS-Downloader/releases/latest/download/ORCUS.Downloader.exe)** to run directly without installation.
 
-### Option 2: Run from Source
+### Option 3: Run from Source
 
 1. **Clone the repository**:
    ```bash
@@ -105,28 +112,29 @@ Simply download or double-click **[ORCUS Downloader.exe (최신 v1.0.2 다운로
    ```bash
    python main.py
    ```
-   *(FFmpeg is automatically detected or downloaded on first run if missing.)*
+   *(FFmpeg is automatically detected or auto-downloaded on first run if missing.)*
 
 ---
 
-## 🛠️ Building Standalone Executable
+## 🛠️ Building Standalone Executable & Installer
 
-You can compile the application into a single standalone `.exe` using PyInstaller:
+You can build both the directory distribution and Inno Setup installer using the automated PowerShell script:
 
 ```powershell
-python -m PyInstaller --noconsole --onefile --clean `
-  --icon=app_icon.ico `
-  --add-data "app_icon.png;." `
-  --add-data "app_icon.ico;." `
-  --add-data "src;src" `
-  --collect-all customtkinter `
-  --collect-all pystray `
-  --paths "src" `
-  --name "ORCUS Downloader" `
-  main.py
+.\build_installer.ps1
 ```
 
-The compiled binary will be placed in the `dist/` directory.
+Or manually via PyInstaller and Inno Setup:
+
+```powershell
+# 1. PyInstaller onedir distribution
+python -m PyInstaller ORCUS_Downloader.spec --clean --noconfirm
+
+# 2. Inno Setup 6 installer compilation
+iscc setup.iss
+```
+
+The resulting standalone installer will be placed in `installer_output/ORCUS_Downloader_v1.0.4_Setup.exe`.
 
 ---
 

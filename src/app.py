@@ -65,25 +65,9 @@ class OrcusDownloaderApp(ctk.CTk):
         self.geometry("860x800")
         self.minsize(800, 740)
 
-        # Base path for resources (supports PyInstaller bundle and src/ submodule)
-        if getattr(sys, 'frozen', False):
-            self.base_dir = sys._MEIPASS
-        else:
-            self.base_dir = os.path.dirname(os.path.abspath(__file__))
-
-        self.icon_ico = os.path.join(self.base_dir, "app_icon.ico")
-        self.icon_png = os.path.join(self.base_dir, "app_icon.png")
-
-        # Fallback to parent directory if running from src/
-        if not os.path.exists(self.icon_ico):
-            parent_ico = os.path.join(os.path.dirname(self.base_dir), "app_icon.ico")
-            if os.path.exists(parent_ico):
-                self.icon_ico = parent_ico
-
-        if not os.path.exists(self.icon_png):
-            parent_png = os.path.join(os.path.dirname(self.base_dir), "app_icon.png")
-            if os.path.exists(parent_png):
-                self.icon_png = parent_png
+        import path_utils
+        self.icon_ico = path_utils.get_resource_path("app_icon.ico")
+        self.icon_png = path_utils.get_resource_path("app_icon.png")
 
         # Set window icon
         if os.path.exists(self.icon_ico):

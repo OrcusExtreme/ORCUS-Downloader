@@ -16,7 +16,9 @@ ENV/
 # PyInstaller temporary build artifacts
 build/
 dist/
+installer_output/
 *.spec
+!ORCUS_Downloader.spec
 bin/
 ffmpeg/
 *.tmp.zip
