@@ -18,7 +18,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Platform-Windows-0078D6?style=flat-square&logo=windows" alt="Platform"/>
   <a href="https://github.com/OrcusExtreme/ORCUS-Downloader/releases/latest">
-    <img src="https://img.shields.io/badge/Release-v1.0.1-orange?style=flat-square&logo=github" alt="Release"/>
+    <img src="https://img.shields.io/badge/Release-v1.0.2-orange?style=flat-square&logo=github" alt="Release"/>
   </a>
   <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python" alt="Python"/>
   <img src="https://img.shields.io/badge/GUI-CustomTkinter-blueviolet?style=flat-square" alt="GUI"/>
@@ -83,9 +83,10 @@ yt_dlp/
 ## 🚀 Quick Start
 
 ### Option 1: Run Prebuilt Executable
-Simply download or double-click **[ORCUS Downloader.exe (최신 v1.0.1 다운로드)](https://github.com/OrcusExtreme/ORCUS-Downloader/releases/latest/download/ORCUS.Downloader.exe)**.  
+Simply download or double-click **[ORCUS Downloader.exe (최신 v1.0.2 다운로드)](https://github.com/OrcusExtreme/ORCUS-Downloader/releases/latest/download/ORCUS.Downloader.exe)**.  
 - **100% Zero-Configuration**: Works on clean Windows PCs with absolutely nothing installed!
 - **Auto-Provisioned FFmpeg**: Media processing engine (FFmpeg & FFprobe) is automatically bundled or self-provisioned without any manual setup, winget commands, or PATH configuration.
+- **YouTube Sign-in & Anti-Bot Bypass**: Native embedded multi-client resolution bypasses "Please sign in" errors automatically.
 
 ### Option 2: Run from Source
 

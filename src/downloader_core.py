@@ -174,49 +174,69 @@ def fetch_preview_info(url: str) -> dict:
         'no_warnings': True,
         'noplaylist': True,
     }
+    if platform == 'YouTube':
+        ydl_opts['extractor_args'] = {
+            'youtube': {
+                'player_client': ['web_embedded', 'tv_downgraded', 'web', 'android', 'ios'],
+            }
+        }
     ffmpeg_dir = ffmpeg_manager.get_ffmpeg_dir()
     if ffmpeg_dir:
         ydl_opts['ffmpeg_location'] = ffmpeg_dir
 
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(cleaned, download=False)
-            if not info:
-                return None
+        info = None
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(cleaned, download=False)
+        except Exception as e:
+            if platform == 'YouTube' and any(k in str(e).lower() for k in ['sign in', 'login_required', 'cookies', 'bot']):
+                for b in ['edge', 'chrome', 'firefox', 'brave', 'whale']:
+                    try:
+                        retry_opts = dict(ydl_opts)
+                        retry_opts['cookiesfrombrowser'] = (b,)
+                        with yt_dlp.YoutubeDL(retry_opts) as r_ydl:
+                            info = r_ydl.extract_info(cleaned, download=False)
+                            if info:
+                                break
+                    except Exception:
+                        continue
+        if not info:
+            return None
 
-            title = info.get('title', 'Unknown Title')
-            uploader = info.get('uploader') or info.get('channel') or 'Unknown Uploader'
-            duration = info.get('duration') or 0
-            dur_m, dur_s = divmod(int(duration), 60)
-            dur_h, dur_m = divmod(dur_m, 60)
-            if dur_h > 0:
-                dur_str = f"{dur_h}:{dur_m:02d}:{dur_s:02d}"
-            else:
-                dur_str = f"{dur_m:02d}:{dur_s:02d}" if duration else "Live / N/A"
+        title = info.get('title', 'Unknown Title')
+        uploader = info.get('uploader') or info.get('channel') or 'Unknown Uploader'
+        duration = info.get('duration') or 0
+        dur_m, dur_s = divmod(int(duration), 60)
+        dur_h, dur_m = divmod(dur_m, 60)
+        if dur_h > 0:
+            dur_str = f"{dur_h}:{dur_m:02d}:{dur_s:02d}"
+        else:
+            dur_str = f"{dur_m:02d}:{dur_s:02d}" if duration else "Live / N/A"
 
-            thumbnail_url = info.get('thumbnail')
-            thumb_image = None
-            if thumbnail_url:
-                try:
-                    req = urllib.request.Request(
-                        thumbnail_url,
-                        headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-                    )
-                    with urllib.request.urlopen(req, timeout=8) as resp:
-                        img_data = resp.read()
-                        thumb_image = Image.open(io.BytesIO(img_data)).convert("RGB")
-                except Exception:
-                    thumb_image = None
+        thumbnail_url = info.get('thumbnail')
+        thumb_image = None
+        if thumbnail_url:
+            try:
+                req = urllib.request.Request(
+                    thumbnail_url,
+                    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+                )
+                with urllib.request.urlopen(req, timeout=8) as resp:
+                    img_data = resp.read()
+                    thumb_image = Image.open(io.BytesIO(img_data)).convert("RGB")
+            except Exception:
+                thumb_image = None
 
-            return {
-                'title': title,
-                'uploader': uploader,
-                'duration_str': dur_str,
-                'duration_sec': duration,
-                'platform': platform,
-                'thumbnail_image': thumb_image,
-                'thumbnail_url': thumbnail_url,
-            }
+        return {
+            'title': title,
+            'uploader': uploader,
+            'duration_str': dur_str,
+            'duration_sec': duration,
+            'platform': platform,
+            'thumbnail_image': thumb_image,
+            'thumbnail_url': thumbnail_url,
+        }
     except Exception:
         return None
 
@@ -351,6 +371,12 @@ class DownloaderWorker(threading.Thread):
             'quiet': True,
             'no_warnings': True,
         }
+        if platform == 'YouTube':
+            ydl_opts['extractor_args'] = {
+                'youtube': {
+                    'player_client': ['web_embedded', 'tv_downgraded', 'web', 'android', 'ios'],
+                }
+            }
         if writethumbnail:
             ydl_opts['writethumbnail'] = True
         if merge_format:
@@ -402,10 +428,16 @@ class DownloaderWorker(threading.Thread):
                 dur_str = f"{dur_m}:{dur_s:02d}" if duration else "N/A"
 
                 if 'on_start' in self.callbacks:
-                    self.callbacks['on_start'](title, uploader, dur_str, platform)
+                    try:
+                        self.callbacks['on_start'](title, uploader, dur_str, platform)
+                    except Exception:
+                        pass
 
                 if 'on_status' in self.callbacks:
-                    self.callbacks['on_status'](f"Downloading: {title} ({type_text})")
+                    try:
+                        self.callbacks['on_status'](f"Downloading: {title} ({type_text})")
+                    except Exception:
+                        pass
 
                 ydl.download([self.url])
                 final_file = ydl.prepare_filename(info)
@@ -427,5 +459,62 @@ class DownloaderWorker(threading.Thread):
             if 'on_finish' in self.callbacks:
                 self.callbacks['on_finish'](False, "Download cancelled by user.", None)
         except Exception as e:
+            err_msg = str(e)
+            if platform == 'YouTube' and any(k in err_msg.lower() for k in ['sign in', 'login_required', 'use --cookies-from-browser', 'bot', 'confirm your age']):
+                retry_success = False
+                for b in ['edge', 'chrome', 'firefox', 'brave', 'whale', 'opera', 'vivaldi']:
+                    if self.is_cancelled:
+                        break
+                    if 'on_status' in self.callbacks:
+                        self.callbacks['on_status'](f"Trying authentication with {b.capitalize()} browser cookies...")
+                    try:
+                        retry_opts = dict(ydl_opts)
+                        retry_opts['cookiesfrombrowser'] = (b,)
+                        with yt_dlp.YoutubeDL(retry_opts) as r_ydl:
+                            info = r_ydl.extract_info(self.url, download=False)
+                            if not info:
+                                continue
+                            title = info.get('title', 'Unknown Title')
+                            uploader = info.get('uploader') or info.get('channel') or 'Unknown Uploader'
+                            duration = info.get('duration') or 0
+                            dur_m, dur_s = divmod(int(duration), 60)
+                            dur_str = f"{dur_m}:{dur_s:02d}" if duration else "N/A"
+
+                            if 'on_start' in self.callbacks:
+                                self.callbacks['on_start'](title, uploader, dur_str, platform)
+                            if 'on_status' in self.callbacks:
+                                self.callbacks['on_status'](f"Downloading with {b.capitalize()} cookies: {title} ({type_text})")
+
+                            r_ydl.download([self.url])
+                            final_file = r_ydl.prepare_filename(info)
+
+                            if self.download_type == 'audio':
+                                base, _ = os.path.splitext(final_file)
+                                if os.path.exists(base + '.mp3'):
+                                    final_file = base + '.mp3'
+                            else:
+                                if not os.path.exists(final_file):
+                                    base, _ = os.path.splitext(final_file)
+                                    if os.path.exists(base + '.mp4'):
+                                        final_file = base + '.mp4'
+
+                            if 'on_finish' in self.callbacks:
+                                self.callbacks['on_finish'](True, f"{type_text} download completed successfully (using {b.capitalize()} cookies)!", final_file)
+                            retry_success = True
+                            break
+                    except Exception:
+                        continue
+
+                if retry_success:
+                    return
+
+                user_friendly_msg = (
+                    "YouTube에서 로그인 인증을 요구하고 있습니다 (연령 제한, 비공개 또는 봇 방지 감지).\n"
+                    "Edge 또는 Chrome 브라우저에서 YouTube에 로그인되어 있는지 확인해주세요."
+                )
+                if 'on_finish' in self.callbacks:
+                    self.callbacks['on_finish'](False, f"Error: {user_friendly_msg}", None)
+                return
+
             if 'on_finish' in self.callbacks:
                 self.callbacks['on_finish'](False, f"Error: {str(e)}", None)
