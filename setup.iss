@@ -5,7 +5,8 @@
 ; ==============================================================================
 
 #define MyAppName "ORCUS Downloader"
-#define MyAppVersion "1.0.4"
+; Keep in sync with src/version.py
+#define MyAppVersion "1.1.0"
 #define MyAppPublisher "OrcusExtreme"
 #define MyAppURL "https://github.com/OrcusExtreme/ORCUS-Downloader"
 #define MyAppExeName "ORCUS Downloader.exe"

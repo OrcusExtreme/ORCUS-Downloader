@@ -1,8 +1,11 @@
 # Core UI Framework
-customtkinter>=5.2.0
+# Pinned below 6.0: the UI (ui_theme.py) targets the 5.x widget API and its bundled Roboto fonts.
+customtkinter>=5.2.2,<6
 
 # Media Download Engine
-yt-dlp>=2025.01.0
+# [default] pulls in yt-dlp-ejs (YouTube JS challenge solver scripts).
+# Requires an external JS runtime (Deno) — bundled in bin/ or auto-downloaded at runtime.
+yt-dlp[default]>=2026.10.21
 
 # Image & Icon Processing
 Pillow>=10.0.0

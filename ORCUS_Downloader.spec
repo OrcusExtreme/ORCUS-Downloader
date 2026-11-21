@@ -24,10 +24,18 @@ datas = [
     (os.path.join(ROOT_DIR, 'app_icon.png'), '.'),
     (os.path.join(ROOT_DIR, 'app_icon.ico'), '.'),
     (os.path.join(ROOT_DIR, 'src'), 'src'),
+    # Material Icons font (Apache 2.0) used by the Workspace-style UI
+    (os.path.join(ROOT_DIR, 'assets'), 'assets'),
 ]
 
 # Collect customtkinter themes, json configs, and bundled fonts
 datas += collect_data_files('customtkinter')
+
+# yt-dlp-ejs: YouTube JS challenge solver scripts (needed for >360p YouTube formats)
+try:
+    datas += collect_data_files('yt_dlp_ejs')
+except Exception:
+    pass
 
 # -----------------------------------------------------------------------------
 # 2. Binaries (Self-contained FFmpeg & FFprobe)
@@ -42,6 +50,11 @@ if os.path.isfile(ffmpeg_src):
 
 if os.path.isfile(ffprobe_src):
     binaries.append((ffprobe_src, 'bin'))
+
+# Deno JS runtime (yt-dlp YouTube signature / n-challenge solving)
+deno_src = os.path.join(ROOT_DIR, 'bin', 'deno.exe')
+if os.path.isfile(deno_src):
+    binaries.append((deno_src, 'bin'))
 
 # -----------------------------------------------------------------------------
 # 3. Hidden Imports & Dependencies
@@ -61,8 +74,12 @@ hiddenimports = [
     'yt_dlp.extractor',
     'yt_dlp.extractor.youtube',
     'yt_dlp.extractor.chzzk',
+    'yt_dlp_ejs',
     'path_utils',
     'ffmpeg_manager',
+    'js_runtime_manager',
+    'ui_theme',
+    'version',
     'downloader_core',
     'app',
 ]
@@ -122,6 +139,7 @@ coll = COLLECT(
     a.datas,
     strip=False,
     upx=True,
-    upx_exclude=[],
+    # Never UPX-pack the large third-party executables (slow startup, AV false positives)
+    upx_exclude=['deno.exe', 'ffmpeg.exe', 'ffprobe.exe'],
     name='ORCUS Downloader',
 )

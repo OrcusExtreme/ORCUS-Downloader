@@ -1,23 +1,128 @@
+import io
 import os
-import re
-import sys
 import time
-import shutil
+import logging
 import threading
 import urllib.parse
 import urllib.request
-import xml.etree.ElementTree as ET
+from logging.handlers import RotatingFileHandler
 from PIL import Image
-import io
 
 import yt_dlp
 from yt_dlp.extractor.chzzk import CHZZKVideoIE
 from yt_dlp.utils.traversal import traverse_obj
-from yt_dlp.utils import float_or_none, int_or_none, url_or_none, download_range_func
+from yt_dlp.utils import float_or_none, int_or_none, download_range_func
 import ffmpeg_manager
+import js_runtime_manager
 
 class DownloadCancelled(Exception):
     pass
+
+
+# -----------------------------------------------------------------------------
+# Logging: yt-dlp warnings/errors are collected instead of being discarded
+# -----------------------------------------------------------------------------
+_file_logger = None
+_file_logger_lock = threading.Lock()
+
+def _get_file_logger() -> logging.Logger:
+    """Rotating log at %LOCALAPPDATA%/ORCUS Downloader/logs/ytdlp.log (created once, thread-safe)."""
+    global _file_logger
+    with _file_logger_lock:
+        if _file_logger is not None:
+            return _file_logger
+        logger = logging.getLogger("orcus.ytdlp")
+        logger.setLevel(logging.INFO)
+        logger.propagate = False
+        if not logger.handlers:  # idempotent: never attach a second file handler
+            try:
+                log_dir = os.path.join(os.path.dirname(ffmpeg_manager.get_local_storage_dir()), "logs")
+                os.makedirs(log_dir, exist_ok=True)
+                handler = RotatingFileHandler(os.path.join(log_dir, "ytdlp.log"),
+                                              maxBytes=1_000_000, backupCount=2, encoding="utf-8")
+                handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+                logger.addHandler(handler)
+            except Exception:
+                logger.addHandler(logging.NullHandler())
+        _file_logger = logger
+        return logger
+
+
+# Warnings caused by a missing/broken JS challenge solver (browser cookies cannot fix these)
+_JS_WARNING_KEYS = ('javascript runtime', 'js runtime', 'challenge', 'signature')
+
+# Warnings that indicate YouTube formats were dropped (=> possibly degraded quality)
+_QUALITY_WARNING_KEYS = _JS_WARNING_KEYS + (
+    'po token', 'formats may be missing', 'formats have been skipped',
+    'only images are available',
+)
+
+
+class YdlLogger:
+    """yt-dlp logger that records warnings, writes them to the log file and
+    optionally forwards them to the UI status callback."""
+
+    def __init__(self, on_warning=None):
+        self.warnings = []
+        self.on_warning = on_warning
+        self._log = _get_file_logger()
+
+    def debug(self, msg):
+        pass
+
+    def info(self, msg):
+        pass
+
+    def warning(self, msg):
+        self.warnings.append(msg)
+        self._log.warning(msg)
+        if self.on_warning:
+            try:
+                self.on_warning(msg)
+            except Exception:
+                pass
+
+    def error(self, msg):
+        self._log.error(msg)
+
+    def has_quality_warning(self) -> bool:
+        return any(k in w.lower() for w in self.warnings for k in _QUALITY_WARNING_KEYS)
+
+    def has_js_warning(self) -> bool:
+        return any(k in w.lower() for w in self.warnings for k in _JS_WARNING_KEYS)
+
+
+def build_video_format_opts(resolution: str) -> dict:
+    """
+    Format selection for video downloads.
+    - Allows every container/codec (VP9/AV1 webm are the only source of 1440p/4K
+      on YouTube); the result is merged into MP4 by FFmpeg.
+    - A height limit is expressed via format_sort ('res:N' = best <= N, otherwise
+      the closest above) so a missing resolution never silently falls back to 360p.
+    - At equal resolution, H.264/AAC are preferred for player compatibility.
+    """
+    target = None
+    if resolution not in (None, "", "best", "Best (Original)"):
+        try:
+            target = int(str(resolution).replace('p', ''))
+        except ValueError:
+            target = None
+    return {
+        'format': 'bv*+ba/b',
+        'format_sort': [f'res:{target}' if target else 'res', 'fps', 'vcodec:h264', 'acodec:aac'],
+    }
+
+
+def _selected_height(info: dict):
+    if not info:
+        return None
+    h = info.get('height')
+    if h:
+        return h
+    for f in info.get('requested_formats') or []:
+        if f.get('height'):
+            return f['height']
+    return None
 
 _chzzk_patched = False
 
@@ -62,8 +167,11 @@ def patch_chzzk_extractor():
                 bw = int_or_none(rep.get('bandwidth'))
                 codecs = rep.get('codecs', '')
                 
-                vcodec, acodec = 'none', 'none'
+                # Unknown codecs (codecs attr missing, e.g. declared on AdaptationSet)
+                # stay None so yt-dlp treats the PD MP4 as a muxed A/V stream.
+                vcodec, acodec = None, None
                 if codecs:
+                    vcodec, acodec = 'none', 'none'
                     for p in codecs.split(','):
                         p = p.strip()
                         if any(p.startswith(prefix) for prefix in ('avc', 'hev', 'vp', 'av01')):
@@ -171,15 +279,13 @@ def fetch_preview_info(url: str) -> dict:
     ydl_opts = {
         'skip_download': True,
         'quiet': True,
-        'no_warnings': True,
         'noplaylist': True,
+        'logger': YdlLogger(),
     }
     if platform == 'YouTube':
-        ydl_opts['extractor_args'] = {
-            'youtube': {
-                'player_client': ['web_embedded', 'tv_downgraded', 'web', 'android', 'ios'],
-            }
-        }
+        # Preview only needs metadata: use an already-provisioned runtime if present
+        # but never block the preview on a Deno download.
+        ydl_opts.update(js_runtime_manager.get_ytdlp_js_opts(js_runtime_manager.find_deno_exe()))
     ffmpeg_dir = ffmpeg_manager.get_ffmpeg_dir()
     if ffmpeg_dir:
         ydl_opts['ffmpeg_location'] = ffmpeg_dir
@@ -320,19 +426,39 @@ class DownloaderWorker(threading.Thread):
             if 'on_status' in self.callbacks:
                 self.callbacks['on_status'](f"Finished download: {filename}. {action}")
 
+    def _finish(self, success, message, filepath):
+        if 'on_finish' in self.callbacks:
+            self.callbacks['on_finish'](success, message, filepath)
+
     def run(self):
+        # Guarantees on_finish is always delivered, even if engine setup fails,
+        # so the UI never stays stuck in the "downloading" state.
+        try:
+            self._run()
+        except DownloadCancelled:
+            self._finish(False, "Download cancelled by user.", None)
+        except Exception as e:
+            self._finish(False, f"Error: {str(e)}", None)
+
+    def _run(self):
         patch_chzzk_extractor()
         platform = detect_platform(self.url)
 
-        type_text = "Audio (MP3)" if self.download_type == "audio" else f"Video ({self.resolution}p)"
+        if self.download_type == "audio":
+            type_text = "Audio (MP3)"
+        elif str(self.resolution).isdigit():
+            type_text = f"Video ({self.resolution}p)"
+        else:
+            type_text = "Video (Best)"
         if 'on_status' in self.callbacks:
             self.callbacks['on_status'](f"[{platform}] Analyzing {type_text}...")
 
         outtmpl = os.path.join(self.output_dir, '%(title)s [%(id)s].%(ext)s')
 
         postprocessors = []
+        format_opts = {}
         if self.download_type == 'audio':
-            fmt = 'bestaudio/best'
+            format_opts = {'format': 'bestaudio/best'}
             # MP3 Extraction with 320k
             postprocessors.append({
                 'key': 'FFmpegExtractAudio',
@@ -345,23 +471,11 @@ class DownloaderWorker(threading.Thread):
             writethumbnail = True
         else:
             writethumbnail = False
-            res_val = self.resolution
-            if res_val in ("best", "Best (Original)"):
-                if platform == 'CHZZK':
-                    fmt = 'best'
-                else:
-                    fmt = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best'
-            else:
-                try:
-                    num_h = int(str(res_val).replace('p', ''))
-                    fmt = f'bestvideo[height<={num_h}][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<={num_h}]+bestaudio/best[height<={num_h}]/best'
-                except Exception:
-                    fmt = 'bestvideo+bestaudio/best'
-
+            format_opts = build_video_format_opts(self.resolution)
             merge_format = 'mp4'
 
         ydl_opts = {
-            'format': fmt,
+            **format_opts,
             'outtmpl': outtmpl,
             'progress_hooks': [self._progress_hook],
             'continuedl': True,
@@ -369,7 +483,6 @@ class DownloaderWorker(threading.Thread):
             'retries': 10,
             'fragment_retries': 10,
             'quiet': True,
-            'no_warnings': True,
             # Speed & Performance Optimizations
             'concurrent_fragment_downloads': 8,   # Parallel chunk downloads for DASH & HLS
             'buffersize': 1048576,                # 1MB I/O buffer to reduce disk latency
@@ -380,12 +493,19 @@ class DownloaderWorker(threading.Thread):
                 'FFmpegMerger': ['-threads', '0'],
             },
         }
+        deno_path = None
         if platform == 'YouTube':
-            ydl_opts['extractor_args'] = {
-                'youtube': {
-                    'player_client': ['web_embedded', 'tv_downgraded', 'web', 'android', 'ios'],
-                }
-            }
+            deno_path = js_runtime_manager.find_deno_exe()
+            if not deno_path:
+                if 'on_status' in self.callbacks:
+                    self.callbacks['on_status']("Setting up YouTube JS runtime (Deno)...")
+
+                def _deno_progress(pct, msg):
+                    if 'on_status' in self.callbacks:
+                        self.callbacks['on_status'](f"Deno: {msg}")
+
+                deno_path = js_runtime_manager.ensure_deno(progress_callback=_deno_progress)
+            ydl_opts.update(js_runtime_manager.get_ytdlp_js_opts(deno_path))
         if writethumbnail:
             ydl_opts['writethumbnail'] = True
         if merge_format:
@@ -424,12 +544,76 @@ class DownloaderWorker(threading.Thread):
             ydl_opts['download_ranges'] = download_range_func(None, [(s_val, end_sec)])
             ydl_opts['force_keyframes_at_cuts'] = True
 
-        try:
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(self.url, download=False)
-                if not info:
-                    raise Exception("Failed to retrieve video metadata.")
+        # Engine setup (Deno / FFmpeg downloads) may take a while; honour Cancel here.
+        if self.is_cancelled:
+            raise DownloadCancelled("Download cancelled by user.")
 
+        target_h = None
+        if self.download_type != 'audio':
+            try:
+                target_h = int(str(self.resolution).replace('p', ''))
+            except (TypeError, ValueError):
+                target_h = None
+
+        auth_keys = ['sign in', 'login_required', 'use --cookies-from-browser', 'bot', 'confirm your age']
+        candidate = None  # (ydl, info, logger, browser)
+        ydl_closed = False
+        last_error = None
+        auth_error = None
+
+        try:
+            # Attempt 1: no cookies
+            try:
+                candidate = self._extract(ydl_opts, None)
+            except DownloadCancelled:
+                raise
+            except Exception as e:
+                last_error = e
+                if not (platform == 'YouTube' and any(k in str(e).lower() for k in auth_keys)):
+                    raise
+                auth_error = e
+
+            # Attempt 2+: browser cookies — only when they can actually help:
+            # login/age/bot checks, or degraded quality while the JS solver itself worked.
+            # (Missing/broken Deno degrades quality too, but cookies cannot fix that.)
+            needs_cookies = candidate is None or (
+                deno_path is not None
+                and self._is_degraded(candidate, target_h)
+                and not candidate[2].has_js_warning()
+            )
+            if platform == 'YouTube' and needs_cookies:
+                for b in ['edge', 'chrome', 'firefox', 'brave', 'whale', 'opera', 'vivaldi']:
+                    if self.is_cancelled:
+                        raise DownloadCancelled("Download cancelled by user.")
+                    if 'on_status' in self.callbacks:
+                        self.callbacks['on_status'](f"Trying authentication with {b.capitalize()} browser cookies...")
+                    try:
+                        alt = self._extract(ydl_opts, b)
+                    except DownloadCancelled:
+                        raise
+                    except Exception as e:
+                        last_error = e
+                        continue
+                    if candidate is None or (_selected_height(alt[1]) or 0) > (_selected_height(candidate[1]) or 0):
+                        if candidate is not None:
+                            candidate[0].close()
+                        candidate = alt
+                    else:
+                        alt[0].close()
+                    if not self._is_degraded(candidate, target_h):
+                        break
+
+            if candidate is None:
+                # Report the original sign-in error, not whichever browser failed last.
+                if auth_error is not None:
+                    raise Exception(
+                        "YouTube에서 로그인 인증을 요구하고 있습니다 (연령 제한, 비공개 또는 봇 방지 감지).\n"
+                        "Edge 또는 Chrome 브라우저에서 YouTube에 로그인되어 있는지 확인해주세요."
+                    )
+                raise last_error or Exception("Failed to retrieve video metadata.")
+
+            ydl, info, logger, browser = candidate
+            with ydl:
                 title = info.get('title', 'Unknown Title')
                 uploader = info.get('uploader') or info.get('channel') or 'Unknown Uploader'
                 duration = info.get('duration') or 0
@@ -442,15 +626,21 @@ class DownloaderWorker(threading.Thread):
                     except Exception:
                         pass
 
+                cookie_note = f" with {browser.capitalize()} cookies" if browser else ""
                 if 'on_status' in self.callbacks:
                     try:
-                        self.callbacks['on_status'](f"Downloading: {title} ({type_text})")
+                        self.callbacks['on_status'](f"Downloading{cookie_note}: {title} ({type_text})")
                     except Exception:
                         pass
 
-                ydl.process_ie_result(info, download=True)
-                final_file = ydl.prepare_filename(info)
-                
+                result = ydl.process_ie_result(info, download=True) or info
+                final_file = None
+                for rd in result.get('requested_downloads') or []:
+                    if rd.get('filepath'):
+                        final_file = rd['filepath']
+                if not final_file:
+                    final_file = ydl.prepare_filename(result)
+
                 if self.download_type == 'audio':
                     base, _ = os.path.splitext(final_file)
                     if os.path.exists(base + '.mp3'):
@@ -460,70 +650,67 @@ class DownloaderWorker(threading.Thread):
                         base, _ = os.path.splitext(final_file)
                         if os.path.exists(base + '.mp4'):
                             final_file = base + '.mp4'
+            ydl_closed = True
 
-            if 'on_finish' in self.callbacks:
-                self.callbacks['on_finish'](True, f"{type_text} download completed successfully!", final_file)
+            msg = f"{type_text} download completed successfully{cookie_note}!"
+            if self.download_type != 'audio':
+                w, h = result.get('width'), _selected_height(result)
+                if h:
+                    msg += f" [{w}x{h}]" if w else f" [{h}p]"
+                if self._is_degraded(candidate, target_h):
+                    if candidate[2].has_js_warning() or deno_path is None:
+                        reason = "YouTube JS 런타임(Deno)을 사용할 수 없어 고화질 포맷을 받지 못함"
+                    else:
+                        reason = "YouTube가 고화질 포맷을 제공하지 않음"
+                    msg += (f"\n⚠ 요청한 화질을 받지 못했습니다 ({reason}).\n"
+                            "로그: %LOCALAPPDATA%\\ORCUS Downloader\\logs\\ytdlp.log")
+                elif target_h and h and h < target_h:
+                    msg += f" (원본 최대 해상도 {h}p)"
 
-        except DownloadCancelled:
-            if 'on_finish' in self.callbacks:
-                self.callbacks['on_finish'](False, "Download cancelled by user.", None)
-        except Exception as e:
-            err_msg = str(e)
-            if platform == 'YouTube' and any(k in err_msg.lower() for k in ['sign in', 'login_required', 'use --cookies-from-browser', 'bot', 'confirm your age']):
-                retry_success = False
-                for b in ['edge', 'chrome', 'firefox', 'brave', 'whale', 'opera', 'vivaldi']:
-                    if self.is_cancelled:
-                        break
-                    if 'on_status' in self.callbacks:
-                        self.callbacks['on_status'](f"Trying authentication with {b.capitalize()} browser cookies...")
-                    try:
-                        retry_opts = dict(ydl_opts)
-                        retry_opts['cookiesfrombrowser'] = (b,)
-                        with yt_dlp.YoutubeDL(retry_opts) as r_ydl:
-                            info = r_ydl.extract_info(self.url, download=False)
-                            if not info:
-                                continue
-                            title = info.get('title', 'Unknown Title')
-                            uploader = info.get('uploader') or info.get('channel') or 'Unknown Uploader'
-                            duration = info.get('duration') or 0
-                            dur_m, dur_s = divmod(int(duration), 60)
-                            dur_str = f"{dur_m}:{dur_s:02d}" if duration else "N/A"
+        except BaseException:
+            if candidate is not None and not ydl_closed:
+                candidate[0].close()
+            raise  # reported by run()
 
-                            if 'on_start' in self.callbacks:
-                                self.callbacks['on_start'](title, uploader, dur_str, platform)
-                            if 'on_status' in self.callbacks:
-                                self.callbacks['on_status'](f"Downloading with {b.capitalize()} cookies: {title} ({type_text})")
+        self._finish(True, msg, final_file)
 
-                            r_ydl.download([self.url])
-                            final_file = r_ydl.prepare_filename(info)
+    def _extract(self, base_opts: dict, browser):
+        """Extracts metadata (with format selection) using a fresh YoutubeDL.
+        Returns (ydl, info, logger, browser); the caller owns/closes ydl."""
+        def _on_warning(msg):
+            if 'on_status' in self.callbacks:
+                self.callbacks['on_status'](f"⚠ {msg[:160]}")
 
-                            if self.download_type == 'audio':
-                                base, _ = os.path.splitext(final_file)
-                                if os.path.exists(base + '.mp3'):
-                                    final_file = base + '.mp3'
-                            else:
-                                if not os.path.exists(final_file):
-                                    base, _ = os.path.splitext(final_file)
-                                    if os.path.exists(base + '.mp4'):
-                                        final_file = base + '.mp4'
+        logger = YdlLogger(on_warning=_on_warning)
+        opts = dict(base_opts)
+        opts['logger'] = logger
+        if browser:
+            opts['cookiesfrombrowser'] = (browser,)
+        ydl = yt_dlp.YoutubeDL(opts)
+        try:
+            info = ydl.extract_info(self.url, download=False)
+            if not info:
+                raise Exception("Failed to retrieve video metadata.")
+        except BaseException:
+            ydl.close()
+            raise
+        return ydl, info, logger, browser
 
-                            if 'on_finish' in self.callbacks:
-                                self.callbacks['on_finish'](True, f"{type_text} download completed successfully (using {b.capitalize()} cookies)!", final_file)
-                            retry_success = True
-                            break
-                    except Exception:
-                        continue
+    def _is_degraded(self, candidate, target_h) -> bool:
+        """True when yt-dlp reported dropped YouTube formats and the selected video
+        is a low-resolution (<= 480p) fallback below what was requested.
 
-                if retry_success:
-                    return
-
-                user_friendly_msg = (
-                    "YouTube에서 로그인 인증을 요구하고 있습니다 (연령 제한, 비공개 또는 봇 방지 감지).\n"
-                    "Edge 또는 Chrome 브라우저에서 YouTube에 로그인되어 있는지 확인해주세요."
-                )
-                if 'on_finish' in self.callbacks:
-                    self.callbacks['on_finish'](False, f"Error: {user_friendly_msg}", None)
-                return
-
-            if 'on_finish' in self.callbacks:
-                self.callbacks['on_finish'](False, f"Error: {str(e)}", None)
+        A genuinely low-resolution video still gets separate DASH video+audio
+        streams ('requested_formats'); the degraded case falls back to a single
+        progressive format (e.g. 360p format 18) unless the JS solver failed."""
+        if candidate is None or self.download_type == 'audio':
+            return False
+        _, info, logger, _ = candidate
+        if not logger.has_quality_warning():
+            return False
+        h = _selected_height(info)
+        if h is None:
+            return True
+        if info.get('requested_formats') and not logger.has_js_warning():
+            return False
+        return h <= 480 and (target_h is None or h < target_h)

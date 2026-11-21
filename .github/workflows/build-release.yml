@@ -18,6 +18,15 @@ jobs:
       - name: Checkout Source Code
         uses: actions/checkout@v4
 
+      - name: Verify Release Tag Matches App Version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          $iss = Get-Content setup.iss -Raw
+          if ($iss -notmatch '#define MyAppVersion "([^"]+)"') { throw "MyAppVersion not found in setup.iss" }
+          $ver = $Matches[1]
+          if ("v$ver" -ne "${{ github.ref_name }}") { throw "Tag ${{ github.ref_name }} does not match setup.iss version v$ver" }
+          if ((Get-Content src/version.py -Raw) -notmatch "__version__ = `"$([regex]::Escape($ver))`"") { throw "src/version.py does not match setup.iss version $ver" }
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -39,6 +48,12 @@ jobs:
           Expand-Archive -Path "bin\ffprobe.zip" -DestinationPath "bin" -Force
           Remove-Item "bin\*.zip" -Force
 
+      - name: Download Deno JS Runtime (yt-dlp YouTube challenge solver)
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip" -OutFile "bin\deno.zip"
+          Expand-Archive -Path "bin\deno.zip" -DestinationPath "bin" -Force
+          Remove-Item "bin\deno.zip" -Force
+
       - name: Build Executable with PyInstaller
         run: |
           python -m PyInstaller --noconsole --onefile --clean `
@@ -46,9 +61,9 @@ jobs:
             --add-data "app_icon.png;." `
             --add-data "app_icon.ico;." `
             --add-data "src;src" `
-            --add-binary "bin/ffmpeg.exe;." `
-            --add-binary "bin/ffprobe.exe;." `
+            --add-data "assets;assets" `
             --collect-all customtkinter `
+            --collect-all yt_dlp_ejs `
             --collect-all pystray `
             --paths "src" `
             --name "ORCUS.Downloader" `
